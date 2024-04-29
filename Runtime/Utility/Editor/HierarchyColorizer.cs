@@ -1,15 +1,131 @@
 using UnityEngine;
 using UnityEditor;
+using System.Collections.Generic;
 
-namespace LS
+namespace LS.Utility.HierarchyColorizer
 {
+    public static class HierarchyColorizerPrefs
+    {
+        // PlayerPrefs keys
+        public const string BackgroundColorKeyPrefix = "CustomBackgroundColor";
+        public const string TextColorKeyPrefix = "CustomTextColor";
+    }
+
+    public class HierarchyColorizerEditor : EditorWindow
+    {
+        private List<Color> customBackgroundColors = new List<Color>();
+        private List<Color> customTextColors = new List<Color>();
+
+        private Vector2 scrollPosition;
+
+        [MenuItem("Window/Hierarchy Colorizer")]
+        public static void ShowWindow()
+        {
+            GetWindow<HierarchyColorizerEditor>("Hierarchy Colorizer");
+        }
+
+        private void OnEnable()
+        {
+            LoadCustomColors();
+        }
+
+        private void LoadCustomColors()
+        {
+            customBackgroundColors.Clear();
+            customTextColors.Clear();
+
+            for (int i = 0; i < 9; i++)
+            {
+                Color bgColor = PlayerPrefs.HasKey(HierarchyColorizerPrefs.BackgroundColorKeyPrefix + i) ?
+                    PlayerPrefsX.GetColor(HierarchyColorizerPrefs.BackgroundColorKeyPrefix + i) : Color.white;
+                customBackgroundColors.Add(bgColor);
+
+                Color textColor = PlayerPrefs.HasKey(HierarchyColorizerPrefs.TextColorKeyPrefix + i) ?
+                    PlayerPrefsX.GetColor(HierarchyColorizerPrefs.TextColorKeyPrefix + i) : Color.black;
+                customTextColors.Add(textColor);
+            }
+        }
+
+        private void SaveCustomColors()
+        {
+            for (int i = 0; i < customBackgroundColors.Count; i++)
+            {
+                PlayerPrefsX.SetColor(HierarchyColorizerPrefs.BackgroundColorKeyPrefix + i, customBackgroundColors[i]);
+                PlayerPrefsX.SetColor(HierarchyColorizerPrefs.TextColorKeyPrefix + i, customTextColors[i]);
+            }
+            PlayerPrefs.Save();
+        }
+
+        private void OnGUI()
+        {
+            GUILayout.Label("Customize Hierarchy Colors", EditorStyles.boldLabel);
+
+            scrollPosition = EditorGUILayout.BeginScrollView(scrollPosition);
+
+            for (int i = 0; i < customBackgroundColors.Count; i++)
+            {
+                customBackgroundColors[i] = EditorGUILayout.ColorField("Bg Color - Level " + i, customBackgroundColors[i]);
+            }
+
+            for (int i = 0; i < customTextColors.Count; i++)
+            {
+                customTextColors[i] = EditorGUILayout.ColorField("Text Color - Level " + i, customTextColors[i]);
+            }
+
+            EditorGUILayout.EndScrollView();
+
+            if (GUILayout.Button("Add Level"))
+            {
+                customBackgroundColors.Add(Color.white);
+                customTextColors.Add(Color.white);
+            }
+
+            if (GUILayout.Button("Apply Colors"))
+            {
+                HierarchyColorizer.UpdateCustomColors(customBackgroundColors.ToArray(), customTextColors.ToArray());
+                SaveCustomColors();
+            }
+        }
+    }
+
+    public static class PlayerPrefsX
+    {
+        public static void SetColor(string key, Color color)
+        {
+            PlayerPrefs.SetFloat(key + "_r", color.r);
+            PlayerPrefs.SetFloat(key + "_g", color.g);
+            PlayerPrefs.SetFloat(key + "_b", color.b);
+            PlayerPrefs.SetFloat(key + "_a", color.a);
+        }
+
+        public static Color GetColor(string key)
+        {
+            float r = PlayerPrefs.GetFloat(key + "_r");
+            float g = PlayerPrefs.GetFloat(key + "_g");
+            float b = PlayerPrefs.GetFloat(key + "_b");
+            float a = PlayerPrefs.GetFloat(key + "_a");
+            return new Color(r, g, b, a);
+        }
+    }
+
     [InitializeOnLoad]
     public static class HierarchyColorizer
     {
+        private static Color[] customBackgroundColors = new Color[9];
+        private static Color[] customTextColors = new Color[9];
+
         static HierarchyColorizer()
         {
+            LoadCustomColors();
             EditorApplication.hierarchyWindowItemOnGUI += HandleHierarchyWindowItemOnGUI;
             EditorApplication.hierarchyChanged += RepaintHierarchyWindow;
+        }
+
+        public static void UpdateCustomColors(Color[] backgroundColors, Color[] textColors)
+        {
+            customBackgroundColors = backgroundColors;
+            customTextColors = textColors;
+            RepaintHierarchyWindow();
         }
 
         private static void HandleHierarchyWindowItemOnGUI(int instanceID, Rect selectionRect)
@@ -21,7 +137,7 @@ namespace LS
 
                 bool isActive = GetActiveState(gameObject);
 
-                (Color backgroundColor, Color textColor) = GetColorForLevel(hierarchyLevel, isActive);
+                (Color backgroundColor, Color textColor) = GetColorsForLevel(hierarchyLevel, isActive);
 
                 GUIStyle style = new GUIStyle(GUI.skin.label);
                 style.normal.textColor = textColor;
@@ -31,12 +147,8 @@ namespace LS
                 {
                     style.alignment = TextAnchor.MiddleCenter; // Align text to center
                     style.fontStyle = FontStyle.Bold;
+                    style.fontSize = Mathf.RoundToInt(style.fontSize + 2);
                 }
-                else if (hierarchyLevel == 1)
-                {
-                    style.fontStyle = FontStyle.Bold;
-                }
-
 
                 Rect offsetRect = new Rect(selectionRect);
                 offsetRect.x += 15; // Offset for better visibility
@@ -71,13 +183,9 @@ namespace LS
 
         private static void DrawOutline(Rect rect, int thickness, Color color)
         {
-            // Top
             EditorGUI.DrawRect(new Rect(rect.x, rect.y, rect.width, thickness), color);
-            // Bottom
             EditorGUI.DrawRect(new Rect(rect.x, rect.yMax - thickness, rect.width, thickness), color);
-            // Left
             EditorGUI.DrawRect(new Rect(rect.x, rect.y, thickness, rect.height), color);
-            // Right
             EditorGUI.DrawRect(new Rect(rect.xMax - thickness, rect.y, thickness, rect.height), color);
         }
 
@@ -107,33 +215,21 @@ namespace LS
             }
         }
 
-        private static (Color backgroundColor, Color textColor) GetColorForLevel(int level, bool isActive)
+        private static (Color backgroundColor, Color textColor) GetColorsForLevel(int level, bool isActive)
         {
-            // You can customize the colors for each level here
-            float bgIntensity = isActive ? 1.0f : 0.5f;
-            float textIntensity = 1.0f; // Always full intensity for text
-            switch (level % 9)
+            Color bgIntensity = isActive ? Color.white : Color.gray;
+
+            if (level < customBackgroundColors.Length && level < customTextColors.Length)
             {
-                case 0:
-                    return (new Color(1f * bgIntensity, 0.85f * bgIntensity, 0.5f * bgIntensity), new Color(0f, 0f, 0f, textIntensity)); // Pastel yellow
-                case 1:
-                    return (new Color(0.6f * bgIntensity, 0.8f * bgIntensity, 0.5f * bgIntensity), new Color(0f, 0f, 0f, textIntensity)); // Pastel green
-                case 2:
-                    return (new Color(0.5f * bgIntensity, 0.7f * bgIntensity, 1f * bgIntensity), new Color(0f, 0f, 0f, textIntensity)); // Pastel blue
-                case 3:
-                    return (new Color(1f * bgIntensity, 0.6f * bgIntensity, 0.6f * bgIntensity), new Color(0f, 0f, 0f, textIntensity)); // Pastel red
-                case 4:
-                    return (new Color(1f * bgIntensity, 0.6f * bgIntensity, 1f * bgIntensity), new Color(0f, 0f, 0f, textIntensity)); // Pastel magenta
-                case 5:
-                    return (new Color(0.8f * bgIntensity, 0.8f * bgIntensity, 0.8f * bgIntensity), new Color(0f, 0f, 0f, textIntensity)); // Pastel gray
-                case 6:
-                    return (new Color(0.5f * bgIntensity, 1f * bgIntensity, 1f * bgIntensity), new Color(0f, 0f, 0f, textIntensity)); // Pastel cyan
-                case 7:
-                    return (new Color(0.4f * bgIntensity, 0.4f * bgIntensity, 0.4f * bgIntensity), new Color(1f, 1f, 1f, textIntensity)); // Light gray
-                case 8:
-                    return (new Color(0.9f * bgIntensity, 0.9f * bgIntensity, 0.9f * bgIntensity), new Color(0f, 0f, 0f, textIntensity)); // Very light gray
-                default:
-                    return (Color.black, Color.white);
+                Color backgroundColor = customBackgroundColors[level];
+                Color textColor = customTextColors[level];
+                return (backgroundColor * bgIntensity, textColor);
+            }
+            else
+            {
+                Color defaultBgColor = customBackgroundColors[customBackgroundColors.Length - 1]; // Use the last color as default
+                Color defaultTextColor = customTextColors[customTextColors.Length - 1];             // Use the last color as default
+                return (defaultBgColor * bgIntensity, defaultTextColor);
             }
         }
 
@@ -141,7 +237,14 @@ namespace LS
         {
             EditorApplication.RepaintHierarchyWindow();
         }
+
+        private static void LoadCustomColors()
+        {
+            for (int i = 0; i < 9; i++)
+            {
+                customBackgroundColors[i] = PlayerPrefsX.GetColor(HierarchyColorizerPrefs.BackgroundColorKeyPrefix + i);
+                customTextColors[i] = PlayerPrefsX.GetColor(HierarchyColorizerPrefs.TextColorKeyPrefix + i);
+            }
+        }
     }
-
 }
-
