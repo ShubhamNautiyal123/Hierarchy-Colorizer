@@ -2,7 +2,7 @@
     "name": "com.ls.hierarchy-colorizer",
     "displayName": "Hierarchy Colorizer",
     "version": "1.0.0",
-    "description": "Enhance Unity's hierarchy view by colorizing game objects based on their type or importance, improving organization and workflow.",
+    "description": "Enhance Unity's hierarchy view by colourizing game objects based on their hierarchy level, improving organization and workflow. Feel free to share and integrate this tool to streamline your Unity development process.",
     "author": "Shubham Nautiyal",
     "keywords": ["unity", "hierarchy", "organization", "workflow"],
     "category": "Tools and Utilities",
